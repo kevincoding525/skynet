@@ -26,6 +26,7 @@
 
 struct skynet_context;
 
+// 日志打印
 void skynet_error(struct skynet_context * context, const char *msg, ...);
 const char * skynet_command(struct skynet_context * context, const char * cmd , const char * parm);
 uint32_t skynet_queryname(struct skynet_context * context, const char * name);
