@@ -99,6 +99,7 @@ daemon_init(const char *pidfile) {
 		return 1;
 	}
 
+    // 设置为守护进程
 #ifdef __APPLE__
 	fprintf(stderr, "'daemon' is deprecated: first deprecated in OS X 10.5 , use launchd instead.\n");
 #else
@@ -113,6 +114,7 @@ daemon_init(const char *pidfile) {
 		return 1;
 	}
 
+    // 将标准输入，标准输出，标准错误的文件描述符重定向到/dev/null
 	if (redirect_fds()) {
 		return 1;
 	}
@@ -122,5 +124,6 @@ daemon_init(const char *pidfile) {
 
 int
 daemon_exit(const char *pidfile) {
+    // 删除文件
 	return unlink(pidfile);
 }
