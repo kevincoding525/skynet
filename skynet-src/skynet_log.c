@@ -7,6 +7,7 @@
 
 FILE * 
 skynet_log_open(struct skynet_context * ctx, uint32_t handle) {
+	// 根据日志文件配置路径打开日志文件
 	const char * logpath = skynet_getenv("logpath");
 	if (logpath == NULL)
 		return NULL;
@@ -15,8 +16,12 @@ skynet_log_open(struct skynet_context * ctx, uint32_t handle) {
 	sprintf(tmp, "%s/%08x.log", logpath, handle);
 	FILE *f = fopen(tmp, "ab");
 	if (f) {
+		// 获取节点的启动时间
 		uint32_t starttime = skynet_starttime();
+		// 获取当前时间
 		uint64_t currenttime = skynet_now();
+
+		// 记录打开的时间
 		time_t ti = starttime + currenttime/100;
 		skynet_error(ctx, "Open log file %s", tmp);
 		fprintf(f, "open time: %u %s", (uint32_t)currenttime, ctime(&ti));

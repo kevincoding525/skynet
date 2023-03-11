@@ -18,7 +18,9 @@ invalid_type(int type) {
 
 void 
 skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session) {
+    // 检测消息有效性 以及harbor服务是否存在
 	assert(invalid_type(rmsg->type) && REMOTE);
+    // 将消息发给harbor服务
 	skynet_context_send(REMOTE, rmsg, sizeof(*rmsg) , source, PTYPE_SYSTEM , session);
 }
 
@@ -31,6 +33,7 @@ skynet_harbor_message_isremote(uint32_t handle) {
 
 void
 skynet_harbor_init(int harbor) {
+    // 设置当前节点的harbor绝对值
 	HARBOR = (unsigned int)harbor << HANDLE_REMOTE_SHIFT;
 }
 

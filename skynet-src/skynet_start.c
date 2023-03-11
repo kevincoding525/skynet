@@ -257,40 +257,63 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 void 
 skynet_start(struct skynet_config * config) {
 	// register SIGHUP for log file reopen
+    // 信号处理 ？？？
 	struct sigaction sa;
 	sa.sa_handler = &handle_hup;
 	sa.sa_flags = SA_RESTART;
 	sigfillset(&sa.sa_mask);
 	sigaction(SIGHUP, &sa, NULL);
 
+    // 以守护进程模式运行
 	if (config->daemon) {
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}
 	}
+
+    // 初始化harbor
 	skynet_harbor_init(config->harbor);
+
+    // 初始化服务句柄管理容器
 	skynet_handle_init(config->harbor);
+
+    // 初始化消息队列
 	skynet_mq_init();
+
+    // 初始化模块
 	skynet_module_init(config->module_path);
+
+    // 初始化定时器
 	skynet_timer_init();
+    // 初始化socket
 	skynet_socket_init();
+
+    // 打开性能分析
 	skynet_profile_enable(config->profile);
 
+    // 创建logger日志服务
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
 		exit(1);
 	}
 
+    // 为日志服务取个名字
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
 
+    // 执行启动过程
 	bootstrap(ctx, config->bootstrap);
 
+    // 启动线程
 	start(config->thread);
 
 	// harbor_exit may call socket send, so it should exit before socket_free
+    // harbor退出
 	skynet_harbor_exit();
+    // 释放socket
 	skynet_socket_free();
+
+    // 关闭守护进程模式
 	if (config->daemon) {
 		daemon_exit(config->daemon);
 	}

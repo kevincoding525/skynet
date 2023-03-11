@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+/*
+ * skynet框架内 所有服务是一个skynet_context对象 每个对象对应一个32位的handle（句柄）
+ * 每个句柄高8位存放harbor，低24位存放当前节点服务的自增ID，handle是全服唯一的。
+ * 每个节点下由一个全局的handle_storage容器进行服务实例的管理和操作
+ * */
+
 // reserve high 8 bits for remote id
 #define HANDLE_MASK 0xffffff // C里面定义整数的长度为啥喜欢用16进制？
 #define HANDLE_REMOTE_SHIFT 24  //  handleID 高8位是harbor，低24位是本节点内的handle自增ID

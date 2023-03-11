@@ -21,8 +21,14 @@ struct remote_message {
 
 void skynet_harbor_send(struct remote_message *rmsg, uint32_t source, int session);
 int skynet_harbor_message_isremote(uint32_t handle);
+
+// harbor初始化
 void skynet_harbor_init(int harbor);
+
+// harbor启动
 void skynet_harbor_start(void * ctx);
+
+// harbor退出
 void skynet_harbor_exit();
 
 #endif
