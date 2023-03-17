@@ -5,7 +5,7 @@
 struct skynet_config {
 	int thread;     // 启动的线程数量
 	int harbor;     // harborID
-	int profile;    // ？？？
+	int profile;    // 是否开启性能分析
 	const char * daemon;    // 是否以守护进程形式存在
 	const char * module_path;   // 模块路径
 	const char * bootstrap;     // bootstrap启动文件

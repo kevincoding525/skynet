@@ -5,6 +5,9 @@
 
 #include "atomic.h"
 
+/*
+ * 读写锁
+ * */
 struct rwlock {
 	ATOM_INT write;
 	ATOM_INT read;

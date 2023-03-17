@@ -10,15 +10,22 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+
+/*
+ * skynet 网络模块 - 对kqueue网络复用模型的封装（kqueue主要用在osx系统上）
+ * */
 static bool 
 sp_invalid(int kfd) {
 	return kfd == -1;
 }
 
+// 创建一个kqueue对象
 static int
 sp_create() {
 	return kqueue();
 }
+
+
 
 static void
 sp_release(int kfd) {

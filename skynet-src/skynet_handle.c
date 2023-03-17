@@ -96,6 +96,7 @@ skynet_handle_register(struct skynet_context *ctx) {
 	}
 }
 
+// 完整的释放服务实例
 int
 skynet_handle_retire(uint32_t handle) {
 	int ret = 0;
@@ -146,6 +147,7 @@ skynet_handle_retire(uint32_t handle) {
 	return ret;
 }
 
+// 完整释放节点内的所有服务实例
 void 
 skynet_handle_retireall() {
 	struct handle_storage *s = H;
@@ -188,7 +190,7 @@ skynet_handle_grab(uint32_t handle) {
 	struct skynet_context * ctx = s->slot[hash];
 	if (ctx && skynet_context_handle(ctx) == handle) {
 		result = ctx;
-		// ？？？
+		// 将服务实例的引用计数+1
 		skynet_context_grab(result);
 	}
 
@@ -261,6 +263,7 @@ _insert_name_before(struct handle_storage *s, char *name, uint32_t handle, int b
 	s->name_count ++;
 }
 
+// 给服务实例绑定一个名字
 static const char *
 _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	int begin = 0;
@@ -287,6 +290,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	return result;
 }
 
+// 给服务实例绑定一个名字
 const char * 
 skynet_handle_namehandle(uint32_t handle, const char *name) {
 	rwlock_wlock(&H->lock);

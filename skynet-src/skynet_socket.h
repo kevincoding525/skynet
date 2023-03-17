@@ -4,6 +4,9 @@
 #include "socket_info.h"
 #include "socket_buffer.h"
 
+/*
+ * skynet 网络模块
+ * */
 struct skynet_context;
 
 #define SKYNET_SOCKET_TYPE_DATA 1

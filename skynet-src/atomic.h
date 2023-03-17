@@ -43,21 +43,33 @@
 #define ATOM_LOAD(ptr) STD_ atomic_load(ptr)
 #define ATOM_STORE(ptr, v) STD_ atomic_store(ptr, v)
 
+/*
+ * CAS语义
+ * */
 static inline int
 ATOM_CAS(STD_ atomic_int *ptr, int oval, int nval) {
 	return STD_ atomic_compare_exchange_weak(ptr, &(oval), nval);
 }
 
+/*
+ * CAS语义
+ * */
 static inline int
 ATOM_CAS_SIZET(STD_ atomic_size_t *ptr, size_t oval, size_t nval) {
 	return STD_ atomic_compare_exchange_weak(ptr, &(oval), nval);
 }
 
+/*
+ * CAS语义
+ * */
 static inline int
 ATOM_CAS_ULONG(STD_ atomic_ulong *ptr, unsigned long oval, unsigned long nval) {
 	return STD_ atomic_compare_exchange_weak(ptr, &(oval), nval);
 }
 
+/*
+ * CAS语义
+ * */
 static inline int
 ATOM_CAS_POINTER(STD_ atomic_uintptr_t *ptr, uintptr_t oval, uintptr_t nval) {
 	return STD_ atomic_compare_exchange_weak(ptr, &(oval), nval);

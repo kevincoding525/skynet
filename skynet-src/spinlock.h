@@ -49,6 +49,9 @@ spinlock_destroy(struct spinlock *lock) {
 
 #include "atomic.h"
 
+/*
+ * 自旋锁
+ * */
 #define atomic_test_and_set_(ptr) STD_ atomic_exchange_explicit(ptr, 1, STD_ memory_order_acquire)
 #define atomic_clear_(ptr) STD_ atomic_store_explicit(ptr, 0, STD_ memory_order_release);
 #define atomic_load_relaxed_(ptr) STD_ atomic_load_explicit(ptr, STD_ memory_order_relaxed)

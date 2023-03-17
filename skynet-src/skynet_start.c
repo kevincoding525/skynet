@@ -27,10 +27,11 @@ struct monitor {
 	int quit;
 };
 
+// 工作线程启动的参数信息
 struct worker_parm {
-	struct monitor *m;
-	int id;
-	int weight;
+	struct monitor *m;  // 监控管理器
+	int id; // 工作线程的编号 在创建线程的时候确立
+	int weight; // 工作线程的权重
 };
 
 static volatile int SIG = 0;
@@ -60,11 +61,15 @@ wakeup(struct monitor *m, int busy) {
 	}
 }
 
+// socket线程执行函数
 static void *
 thread_socket(void *p) {
+    // 监控管理器
 	struct monitor * m = p;
+    // 初始化线程key
 	skynet_initthread(THREAD_SOCKET);
 	for (;;) {
+        // socket线程轮询函数
 		int r = skynet_socket_poll();
 		if (r==0)
 			break;
@@ -90,17 +95,21 @@ free_monitor(struct monitor *m) {
 	skynet_free(m);
 }
 
+// 监控线程执行函数 p是全局监控器管理容器
 static void *
 thread_monitor(void *p) {
 	struct monitor * m = p;
 	int i;
 	int n = m->count;
 	skynet_initthread(THREAD_MONITOR);
+    // 一直循环执行监控
 	for (;;) {
 		CHECK_ABORT
+        // 扫描所有的监控器 检测死循环
 		for (i=0;i<n;i++) {
 			skynet_monitor_check(m->m[i]);
 		}
+        // 为啥要循环睡眠5次 不是一次睡眠5S ？？？
 		for (i=0;i<5;i++) {
 			CHECK_ABORT
 			sleep(1);
@@ -134,7 +143,7 @@ thread_timer(void *p) {
 		skynet_socket_updatetime();
 		CHECK_ABORT
 		wakeup(m,m->count-1);
-		usleep(2500);
+		usleep(2500); // 每2.5ms进行一次tick
 		if (SIG) {
 			signal_hup();
 			SIG = 0;
@@ -150,6 +159,8 @@ thread_timer(void *p) {
 	return NULL;
 }
 
+// 工作线程处理函数
+// p 是当前工作线程的处理权重数据 worker_parm结构
 static void *
 thread_worker(void *p) {
 	struct worker_parm *wp = p;
@@ -179,33 +190,45 @@ thread_worker(void *p) {
 	return NULL;
 }
 
+// skynet作业启动函数
 static void
 start(int thread) {
+    // 创建线程数组 thread个工作线程 + 3个固定线程（socket，timer，monitor）
 	pthread_t pid[thread+3];
 
+    // 创建minitor管理器
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	memset(m, 0, sizeof(*m));
 	m->count = thread;
 	m->sleep = 0;
 
+    // 为每一个工作线程创建监控器
 	m->m = skynet_malloc(thread * sizeof(struct skynet_monitor *));
 	int i;
 	for (i=0;i<thread;i++) {
 		m->m[i] = skynet_monitor_new();
 	}
+
+    // 初始化互斥量
 	if (pthread_mutex_init(&m->mutex, NULL)) {
 		fprintf(stderr, "Init mutex error");
 		exit(1);
 	}
+
+    // 初始化条件量
 	if (pthread_cond_init(&m->cond, NULL)) {
 		fprintf(stderr, "Init cond error");
 		exit(1);
 	}
 
+    // 创建监控线程
 	create_thread(&pid[0], thread_monitor, m);
+    // 创建定时器线程
 	create_thread(&pid[1], thread_timer, m);
+    // 创建socket线程
 	create_thread(&pid[2], thread_socket, m);
 
+    // 分配每个工作线程的消费权重
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 
@@ -220,13 +243,16 @@ start(int thread) {
 		} else {
 			wp[i].weight = 0;
 		}
+        // 创建工作线程
 		create_thread(&pid[i+3], thread_worker, &wp[i]);
 	}
 
+    // 线程启动 主线程阻塞等待其他子线程结束返回
 	for (i=0;i<thread+3;i++) {
 		pthread_join(pid[i], NULL); 
 	}
 
+    // 释放监控管理器
 	free_monitor(m);
 }
 
@@ -246,6 +272,8 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	} else {
 		args[0] = '\0';
 	}
+
+    // 创建bootstrap服务实例失败 将logger服务的消息分发处理掉 保证日志不丢失 便于查问题
 	struct skynet_context *ctx = skynet_context_new(name, args);
 	if (ctx == NULL) {
 		skynet_error(NULL, "Bootstrap error : %s\n", cmdline);
@@ -280,7 +308,7 @@ skynet_start(struct skynet_config * config) {
     // 初始化消息队列
 	skynet_mq_init();
 
-    // 初始化模块
+    // 初始化模块管理容器
 	skynet_module_init(config->module_path);
 
     // 初始化定时器

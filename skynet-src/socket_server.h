@@ -5,6 +5,9 @@
 #include "socket_info.h"
 #include "socket_buffer.h"
 
+/*
+ * skynet 网络模块 - 服务端层
+ * */
 #define SOCKET_DATA 0
 #define SOCKET_CLOSE 1
 #define SOCKET_OPEN 2

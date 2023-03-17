@@ -15,6 +15,7 @@ struct skynet_env {
 
 static struct skynet_env *E = NULL;
 
+// 获取环境变量
 const char * 
 skynet_getenv(const char *key) {
     // 用自旋锁锁住环境变量

@@ -7,6 +7,9 @@
 #define GLOBALNAME_LENGTH 16
 #define REMOTE_MAX 256
 
+/*
+ * skynet 构建了一个harbor的c服务来专门转发负责两个节点直接的消息通信
+ * */
 struct remote_name {
 	char name[GLOBALNAME_LENGTH];
 	uint32_t handle;

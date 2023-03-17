@@ -41,6 +41,8 @@ void
 skynet_harbor_start(void *ctx) {
 	// the HARBOR must be reserved to ensure the pointer is valid.
 	// It will be released at last by calling skynet_harbor_exit
+    // 这里强行对实例的引用计数进行了 + 1 但是没有 - 1
+    // 上面解释的很清楚 这样做是为了保证harbor服务实例不被意外释放，后面在harbor退出的时候会进行引用计数 -1 来释放
 	skynet_context_reserve(ctx);
 	REMOTE = ctx;
 }
@@ -50,6 +52,7 @@ skynet_harbor_exit() {
 	struct skynet_context * ctx = REMOTE;
 	REMOTE= NULL;
 	if (ctx) {
+        // 对服务实例计数器 - 1
 		skynet_context_release(ctx);
 	}
 }
