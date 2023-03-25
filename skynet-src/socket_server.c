@@ -396,6 +396,7 @@ socket_server_create(uint64_t time) {
 		return NULL;
 	}
     // 将管道的数据接收端添加到IO事件监听队列中
+    // skynet中下行发送给客户端的数据都是通过管道的将工作线程的数据包投递给socket线程的
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
 		skynet_error(NULL, "socket-server: can't add server fd to event pool.");
@@ -1689,6 +1690,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				ss->checkctrl = 0;
 			}
 		}
+        // wait 获取新的IO相应事件
 		if (ss->event_index == ss->event_n) {
             /*
              * wait 获取IO相应事件
