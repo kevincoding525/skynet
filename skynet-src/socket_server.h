@@ -30,12 +30,21 @@ struct socket_message {
 	char * data;
 };
 
+// 创建socket_server对象
 struct socket_server * socket_server_create(uint64_t time);
+
+// 释放socket_server对象
 void socket_server_release(struct socket_server *);
+
+// 更新socket_server的时间变量
 void socket_server_updatetime(struct socket_server *, uint64_t time);
+
+// 进行事件轮询
 int socket_server_poll(struct socket_server *, struct socket_message *result, int *more);
 
 void socket_server_exit(struct socket_server *);
+
+
 void socket_server_close(struct socket_server *, uintptr_t opaque, int id);
 void socket_server_shutdown(struct socket_server *, uintptr_t opaque, int id);
 void socket_server_start(struct socket_server *, uintptr_t opaque, int id);

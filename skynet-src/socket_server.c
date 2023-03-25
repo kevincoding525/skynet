@@ -381,16 +381,21 @@ struct socket_server *
 socket_server_create(uint64_t time) {
 	int i;
 	int fd[2];
+    // 创建IO处理的文件描述符
 	poll_fd efd = sp_create();
+    // 检测是否创建成功
 	if (sp_invalid(efd)) {
 		skynet_error(NULL, "socket-server: create event pool failed.");
 		return NULL;
 	}
+    // 创建一个管道
 	if (pipe(fd)) {
+        // 如果管道创建失败 将IO队列的文件描述符释放
 		sp_release(efd);
 		skynet_error(NULL, "socket-server: create socket pair failed.");
 		return NULL;
 	}
+    // 将管道的数据接收端添加到IO事件监听队列中
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
 		skynet_error(NULL, "socket-server: can't add server fd to event pool.");
@@ -400,12 +405,13 @@ socket_server_create(uint64_t time) {
 		return NULL;
 	}
 
+    // 创建和初始化socket_server对象
 	struct socket_server *ss = MALLOC(sizeof(*ss));
 	ss->time = time;
-	ss->event_fd = efd;
-	ss->recvctrl_fd = fd[0];
-	ss->sendctrl_fd = fd[1];
-	ss->checkctrl = 1;
+	ss->event_fd = efd;     // IO事件队列的文件描述符
+	ss->recvctrl_fd = fd[0];    // 管道的接收端
+	ss->sendctrl_fd = fd[1];    // 管道的发送端
+	ss->checkctrl = 1;          // ???
 	ss->reserve_fd = dup(1);	// reserve an extra fd for EMFILE
 
 	for (i=0;i<MAX_SOCKET;i++) {
@@ -416,8 +422,8 @@ socket_server_create(uint64_t time) {
 		spinlock_init(&s->dw_lock);
 	}
 	ATOM_INIT(&ss->alloc_id , 0);
-	ss->event_n = 0;
-	ss->event_index = 0;
+	ss->event_n = 0;    // poll出来的事件数量
+	ss->event_index = 0;    // 当前已处理的数量
 	memset(&ss->soi, 0, sizeof(ss->soi));
 	FD_ZERO(&ss->rfds);
 	assert(ss->recvctrl_fd < FD_SETSIZE);
@@ -1684,6 +1690,11 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 			}
 		}
 		if (ss->event_index == ss->event_n) {
+            /*
+             * wait 获取IO相应事件
+             * ev 是本次可处理的事件列表
+             * event_n 是可处理事件的数量
+             * */
 			ss->event_n = sp_wait(ss->event_fd, ss->ev, MAX_EVENT);
 			ss->checkctrl = 1;
 			if (more) {

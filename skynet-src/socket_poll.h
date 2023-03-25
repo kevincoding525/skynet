@@ -3,6 +3,19 @@
 
 #include <stdbool.h>
 
+
+/*
+ * socket_poll是一个接口文件，封装了IO复用模型的上层接口，skynet网络复用模型linux下支持的是epoll，BSD系统（macosx，freeBSD）支持的是kqueue
+ * skynet 网络复用封装了几个通用的接口：
+ * sp_invalid()
+ * sp_create()
+ * sp_release()
+ * sp_add()
+ * sp_del()
+ * sp_enable()
+ * sp_wait()
+ * sp_nonblocking()
+ * */
 typedef int poll_fd;
 
 struct event {
