@@ -229,7 +229,7 @@ dispatch_socket_message(struct gate *g, const struct skynet_socket_message * mes
 		}
 		break;
 	}
-	case SKYNET_SOCKET_TYPE_CONNECT: {
+	case SKYNET_SOCKET_TYPE_CONNECT: { // tcp监听socket以后由socket线程发回给服务的消息
 		if (message->id == g->listen_id) {
 			// start listening
 			break;
@@ -304,6 +304,7 @@ _cb(struct skynet_context * ctx, void * ud, int type, int session, uint32_t sour
 	}
 	case PTYPE_SOCKET:
 		// recv socket message from skynet_socket
+        // 收到socket线程发过来的消息
 		dispatch_socket_message(g, msg, (int)(sz-sizeof(struct skynet_socket_message)));
 		break;
 	}

@@ -482,12 +482,14 @@ lshutdown(lua_State *L) {
 	return 0;
 }
 
+// 绑定ip 端口 监听tcp
 static int
 llisten(lua_State *L) {
 	const char * host = luaL_checkstring(L,1);
 	int port = luaL_checkinteger(L,2);
 	int backlog = luaL_optinteger(L,3,BACKLOG);
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
+    // tcp的绑定监听
 	int id = skynet_socket_listen(ctx, host,port,backlog);
 	if (id < 0) {
 		return luaL_error(L, "Listen error");

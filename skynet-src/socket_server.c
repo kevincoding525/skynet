@@ -61,10 +61,13 @@
 
 #define USEROBJECT ((size_t)(-1))
 
+/*
+ * 写数据的buffer链表节点
+ * */
 struct write_buffer {
-	struct write_buffer * next;
-	const void *buffer;
-	char *ptr;
+	struct write_buffer * next;     // 链表下一个节点
+	const void *buffer; // buff 数据
+	char *ptr;  // ？？？
 	size_t sz;
 	bool userobject;
 };
@@ -74,9 +77,12 @@ struct write_buffer_udp {
 	uint8_t udp_address[UDP_ADDRESS_SIZE];
 };
 
+/*
+ * 写数据buffer缓冲区（链表）
+ * */
 struct wb_list {
-	struct write_buffer * head;
-	struct write_buffer * tail;
+	struct write_buffer * head; // 头指针
+	struct write_buffer * tail; // 尾指针
 };
 
 struct socket_stat {
@@ -86,10 +92,13 @@ struct socket_stat {
 	uint64_t write;
 };
 
+/*
+ * skynet每一条链接都对应一个socket对象
+ * */
 struct socket {
-	uintptr_t opaque;
-	struct wb_list high;
-	struct wb_list low;
+	uintptr_t opaque;  // 用来存储用户透传的数据 一般是服务的句柄ID
+	struct wb_list high;    // 高优先级的写缓冲队列
+	struct wb_list low;     // 低优先级的写缓冲队列
 	int64_t wb_size;
 	struct socket_stat stat;
 	ATOM_ULONG sending;
@@ -106,30 +115,35 @@ struct socket {
 		int size;
 		uint8_t udp_address[UDP_ADDRESS_SIZE];
 	} p;
-	struct spinlock dw_lock;
+
+    // 工作线程 发送数据会优先走pipe管道发送 如果管道发送失败 则会把数据放到dw_buffer等socket线程触发可写事件直接发送出去
+    //********************************
+	struct spinlock dw_lock; // 自旋锁
 	int dw_offset;
 	const void * dw_buffer;
 	size_t dw_size;
+    //********************************
 };
 
 struct socket_server {
 	volatile uint64_t time;
 	int reserve_fd;	// for EMFILE
-	int recvctrl_fd;
-	int sendctrl_fd;
+	int recvctrl_fd;    // 管道数据接收端
+	int sendctrl_fd;    // 管道数据发送端
 	int checkctrl;
 	poll_fd event_fd;
-	ATOM_INT alloc_id;
-	int event_n;
-	int event_index;
+	ATOM_INT alloc_id;     // 自增id
+	int event_n;        // 当前可处理的事件数量
+	int event_index;    // 当前已处理的事件数量
 	struct socket_object_interface soi;
-	struct event ev[MAX_EVENT];
-	struct socket slot[MAX_SOCKET];
+	struct event ev[MAX_EVENT];     // 可相应的事件列表
+	struct socket slot[MAX_SOCKET];     // socket 数据槽
 	char buffer[MAX_INFO];
 	uint8_t udpbuffer[MAX_UDP_PACKAGE];
 	fd_set rfds;
 };
 
+// open socket 管道消息请求包
 struct request_open {
 	int id;
 	int port;
@@ -137,12 +151,14 @@ struct request_open {
 	char host[1];
 };
 
+// send data tcp 管道消息请求包
 struct request_send {
 	int id;
 	size_t sz;
 	const void * buffer;
 };
 
+// send data udp 管道消息请求包
 struct request_send_udp {
 	struct request_send send;
 	uint8_t address[UDP_ADDRESS_SIZE];
@@ -153,12 +169,14 @@ struct request_setudp {
 	uint8_t address[UDP_ADDRESS_SIZE];
 };
 
+// 关闭socket 管道消息请求包
 struct request_close {
 	int id;
 	int shutdown;
 	uintptr_t opaque;
 };
 
+// 监听socket 管道消息请求包
 struct request_listen {
 	int id;
 	int fd;
@@ -166,17 +184,20 @@ struct request_listen {
 	char host[1];
 };
 
+// bind socket 管道消息请求包
 struct request_bind {
 	int id;
 	int fd;
 	uintptr_t opaque;
 };
 
+// 控制可读事件开关 管道消息请求包
 struct request_resumepause {
 	int id;
 	uintptr_t opaque;
 };
 
+// 设置tcp参数 管道消息请求包
 struct request_setopt {
 	int id;
 	int what;
@@ -208,6 +229,9 @@ struct request_udp {
 	Q query info
  */
 
+/*
+ * request_package用了一个union结构体来节省内存开销
+ * */
 struct request_package {
 	uint8_t header[8];	// 6 bytes dummy
 	union {
@@ -343,17 +367,22 @@ socket_keepalive(int fd) {
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepalive , sizeof(keepalive));  
 }
 
+// 预定一个ID
 static int
 reserve_id(struct socket_server *ss) {
 	int i;
 	for (i=0;i<MAX_SOCKET;i++) {
+        // 通过自增ID来获取一个ID
 		int id = ATOM_FINC(&(ss->alloc_id))+1;
 		if (id < 0) {
+            // 处理溢出
 			id = ATOM_FAND(&(ss->alloc_id), 0x7fffffff) & 0x7fffffff;
 		}
+        // 每一个socket在ss的slot上都占有一个槽位存放一个socket结构体
 		struct socket *s = &ss->slot[HASH_ID(id)];
 		int type_invalid = ATOM_LOAD(&s->type);
 		if (type_invalid == SOCKET_TYPE_INVALID) {
+            // 将type设置为 SOCKET_TYPE_RESERVE
 			if (ATOM_CAS(&s->type, type_invalid, SOCKET_TYPE_RESERVE)) {
 				s->id = id;
 				s->protocol = PROTOCOL_UNKNOWN;
@@ -415,6 +444,7 @@ socket_server_create(uint64_t time) {
 	ss->checkctrl = 1;          // ???
 	ss->reserve_fd = dup(1);	// reserve an extra fd for EMFILE
 
+    // 初始化 socket 哈希槽
 	for (i=0;i<MAX_SOCKET;i++) {
 		struct socket *s = &ss->slot[i];
 		ATOM_INIT(&s->type, SOCKET_TYPE_INVALID);
@@ -437,6 +467,7 @@ socket_server_updatetime(struct socket_server *ss, uint64_t time) {
 	ss->time = time;
 }
 
+// 释放写缓冲队列
 static void
 free_wb_list(struct socket_server *ss, struct wb_list *list) {
 	struct write_buffer *wb = list->head;
@@ -522,6 +553,7 @@ void
 socket_server_release(struct socket_server *ss) {
 	int i;
 	struct socket_message dummy;
+    // 释放 socket 槽里面的所有socket对象 回收内存
 	for (i=0;i<MAX_SOCKET;i++) {
 		struct socket *s = &ss->slot[i];
 		struct socket_lock l;
@@ -531,9 +563,9 @@ socket_server_release(struct socket_server *ss) {
 		}
 		spinlock_destroy(&s->dw_lock);
 	}
-	close(ss->sendctrl_fd);
-	close(ss->recvctrl_fd);
-	sp_release(ss->event_fd);
+	close(ss->sendctrl_fd); // 关闭管道发送端
+	close(ss->recvctrl_fd); // 关闭管道接收端
+	sp_release(ss->event_fd);  // 释放IO文件描述符
 	if (ss->reserve_fd >= 0)
 		close(ss->reserve_fd);
 	FREE(ss);
@@ -545,6 +577,7 @@ check_wb_list(struct wb_list *s) {
 	assert(s->tail == NULL);
 }
 
+// 设置写事件监听开关
 static inline int
 enable_write(struct socket_server *ss, struct socket *s, bool enable) {
 	if (s->writing != enable) {
@@ -554,6 +587,7 @@ enable_write(struct socket_server *ss, struct socket *s, bool enable) {
 	return 0;
 }
 
+// 设置读事件监听开关
 static inline int
 enable_read(struct socket_server *ss, struct socket *s, bool enable) {
 	if (s->reading != enable) {
@@ -563,16 +597,21 @@ enable_read(struct socket_server *ss, struct socket *s, bool enable) {
 	return 0;
 }
 
+// 分配并初始化socket槽上的一个socket对象
 static struct socket *
 new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque, bool reading) {
 	struct socket * s = &ss->slot[HASH_ID(id)];
+
+    // socket结构体在消息投递到socket线程之前已经初始化了一波，type设置的是SOCKET_TYPE_RESERVE
 	assert(ATOM_LOAD(&s->type) == SOCKET_TYPE_RESERVE);
 
+    // 将监听套接字添加到IO事件监听队列中
 	if (sp_add(ss->event_fd, fd, s)) {
 		ATOM_STORE(&s->type, SOCKET_TYPE_INVALID);
 		return NULL;
 	}
 
+    // 执行一些初始化行为
 	s->id = id;
 	s->fd = fd;
 	s->reading = true;
@@ -596,12 +635,14 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 	return s;
 }
 
+// 统计socket上读的数据
 static inline void
 stat_read(struct socket_server *ss, struct socket *s, int n) {
 	s->stat.read += n;
 	s->stat.rtime = ss->time;
 }
 
+// 统计socket上写的数据
 static inline void
 stat_write(struct socket_server *ss, struct socket *s, int n) {
 	s->stat.write += n;
@@ -609,6 +650,13 @@ stat_write(struct socket_server *ss, struct socket *s, int n) {
 }
 
 // return -1 when connecting
+/*
+ * socket线程处理管道投递过来的网络套接字open行为 主要是客户端发起connect连接触发，
+ * 上层API参考 socketdriver.connect()
+ * 参数 ss：全局socket_server对象
+ * 参数 request：管道请求包
+ * 参数 result：处理后的socket_message 消息包
+ * */
 static int
 open_socket(struct socket_server *ss, struct request_open * request, struct socket_message *result) {
 	int id = request->id;
@@ -639,9 +687,9 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		if ( sock < 0 ) {
 			continue;
 		}
-		socket_keepalive(sock);
-		sp_nonblocking(sock);
-		status = connect( sock, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
+		socket_keepalive(sock); // 开启心跳保活
+		sp_nonblocking(sock); // 设置非阻塞模式
+		status = connect( sock, ai_ptr->ai_addr, ai_ptr->ai_addrlen); // 发起网络连接
 		if ( status != 0 && errno != EINPROGRESS) {
 			close(sock);
 			sock = -1;
@@ -661,7 +709,7 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		goto _failed;
 	}
 
-	if(status == 0) {
+	if(status == 0) { // 连接成功
 		ATOM_STORE(&ns->type , SOCKET_TYPE_CONNECTED);
 		struct sockaddr * addr = ai_ptr->ai_addr;
 		void * sin_addr = (ai_ptr->ai_family == AF_INET) ? (void*)&((struct sockaddr_in *)addr)->sin_addr : (void*)&((struct sockaddr_in6 *)addr)->sin6_addr;
@@ -671,6 +719,7 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		freeaddrinfo( ai_list );
 		return SOCKET_OPEN;
 	} else {
+        // 开启写事件
 		if (enable_write(ss, ns, true)) {
 			result->data = "enable write failed";
 			goto _failed;
@@ -689,6 +738,7 @@ _failed_getaddrinfo:
 	return SOCKET_ERR;
 }
 
+// 构建错误信息的消息包
 static int
 report_error(struct socket *s, struct socket_message *result, const char *err) {
 	result->id = s->id;
@@ -721,13 +771,19 @@ close_write(struct socket_server *ss, struct socket *s, struct socket_lock *l, s
 	}
 }
 
+/*
+ * 用tcp协议发送写缓冲队列的数据
+ * param list：写缓冲队列
+ * param l：socket锁
+ * param result 处理返回消息
+ * */
 static int
 send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, struct socket_lock *l, struct socket_message *result) {
-	while (list->head) {
+	while (list->head) { // 遍历链表
 		struct write_buffer * tmp = list->head;
 		for (;;) {
 			ssize_t sz = write(s->fd, tmp->ptr, tmp->sz);
-			if (sz < 0) {
+			if (sz < 0) { // 写数据失败
 				switch(errno) {
 				case EINTR:
 					continue;
@@ -736,7 +792,7 @@ send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 				}
 				return close_write(ss, s, l, result);
 			}
-			stat_write(ss,s,(int)sz);
+			stat_write(ss,s,(int)sz); // 统计socket写数据数量
 			s->wb_size -= sz;
 			if (sz != tmp->sz) {
 				tmp->ptr += sz;
@@ -745,8 +801,8 @@ send_list_tcp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 			}
 			break;
 		}
-		list->head = tmp->next;
-		write_buffer_free(ss,tmp);
+		list->head = tmp->next; // 指向下个链表节点
+		write_buffer_free(ss,tmp); // 释放掉已写成功的buffer节点
 	}
 	list->tail = NULL;
 
@@ -819,6 +875,9 @@ send_list_udp(struct socket_server *ss, struct socket *s, struct wb_list *list, 
 	return -1;
 }
 
+/*
+ * 发送写缓冲队列的数据
+ * */
 static int
 send_list(struct socket_server *ss, struct socket *s, struct wb_list *list, struct socket_lock *l, struct socket_message *result) {
 	if (s->protocol == PROTOCOL_TCP) {
@@ -828,6 +887,9 @@ send_list(struct socket_server *ss, struct socket *s, struct wb_list *list, stru
 	}
 }
 
+/*
+ * 写缓冲数据是否已发完
+ * */
 static inline int
 list_uncomplete(struct wb_list *s) {
 	struct write_buffer *wb = s->head;
@@ -837,6 +899,9 @@ list_uncomplete(struct wb_list *s) {
 	return (void *)wb->ptr != wb->buffer;
 }
 
+/*
+ * 将低优先级缓冲队列的一个缓冲节点数据移到高优先级缓冲队列来
+ * */
 static void
 raise_uncomplete(struct socket * s) {
 	struct wb_list *low = &s->low;
@@ -928,11 +993,16 @@ send_buffer_(struct socket_server *ss, struct socket *s, struct socket_lock *l, 
 	return -1;
 }
 
+/*
+ * 触发写事件
+ * 1. 先看看dw_buffer缓存区是否有数据，如果有则把数据移到高优先级缓冲队列来
+ * 2.依优先级高低发送高低优先缓冲队列的数据
+ * */
 static int
 send_buffer(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message *result) {
 	if (!socket_trylock(l))
 		return -1;	// blocked by direct write, send later.
-	if (s->dw_buffer) {
+	if (s->dw_buffer) {  // 1. 缓冲区内有数据待写 将数据移到high缓冲队列里面去
 		// add direct write buffer before high.head
 		struct write_buffer * buf = MALLOC(sizeof(*buf));
 		struct send_object so;
@@ -941,6 +1011,7 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_lock *l, s
 		buf->sz = so.sz - s->dw_offset;
 		buf->buffer = (void *)s->dw_buffer;
 		s->wb_size+=buf->sz;
+        // 将buf插入高优先级缓冲队列
 		if (s->high.head == NULL) {
 			s->high.head = s->high.tail = buf;
 			buf->next = NULL;
@@ -950,12 +1021,16 @@ send_buffer(struct socket_server *ss, struct socket *s, struct socket_lock *l, s
 		}
 		s->dw_buffer = NULL;
 	}
+    // 2. 发送high和low缓冲队列的数据
 	int r = send_buffer_(ss,s,l,result);
 	socket_unlock(l);
 
 	return r;
 }
 
+/*
+ * 将请求消息包放到缓冲队列里面 数据插入队列链表尾部
+ * */
 static struct write_buffer *
 append_sendbuffer_(struct socket_server *ss, struct wb_list *s, struct request_send * request, int size) {
 	struct write_buffer * buf = MALLOC(size);
@@ -984,18 +1059,27 @@ append_sendbuffer_udp(struct socket_server *ss, struct socket *s, int priority, 
 	s->wb_size += buf->buffer.sz;
 }
 
+/*
+ * 将请求包的数据放到高优先级缓冲队列 数据插入是放到队列链表的尾部
+ * */
 static inline void
 append_sendbuffer(struct socket_server *ss, struct socket *s, struct request_send * request) {
 	struct write_buffer *buf = append_sendbuffer_(ss, &s->high, request, sizeof(*buf));
 	s->wb_size += buf->sz;
 }
 
+/*
+ * 将请求包的数据放到低优先级缓冲队列 数据插入是放到队列链表的尾部
+ * */
 static inline void
 append_sendbuffer_low(struct socket_server *ss,struct socket *s, struct request_send * request) {
 	struct write_buffer *buf = append_sendbuffer_(ss, &s->low, request, sizeof(*buf));
 	s->wb_size += buf->sz;
 }
 
+/*
+ * 开启socket的可写事件监听
+ * */
 static int
 trigger_write(struct socket_server *ss, struct request_send * request, struct socket_message *result) {
 	int id = request->id;
@@ -1020,6 +1104,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 	int id = request->id;
 	struct socket * s = &ss->slot[HASH_ID(id)];
 	struct send_object so;
+    // 用request请求包的buffer数据初始化so对象
 	send_object_init(ss, &so, request->buffer, request->sz);
 	uint8_t type = ATOM_LOAD(&s->type);
 	if (type == SOCKET_TYPE_INVALID || s->id != id
@@ -1029,12 +1114,12 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 		so.free_func((void *)request->buffer);
 		return -1;
 	}
-	if (type == SOCKET_TYPE_PLISTEN || type == SOCKET_TYPE_LISTEN) {
+	if (type == SOCKET_TYPE_PLISTEN || type == SOCKET_TYPE_LISTEN) { // 连接未建立 无法发送数据
 		skynet_error(NULL, "socket-server: write to listen fd %d.", id);
 		so.free_func((void *)request->buffer);
 		return -1;
 	}
-	if (send_buffer_empty(s)) {
+	if (send_buffer_empty(s)) { // 高低优先缓冲队列都是空的
 		if (s->protocol == PROTOCOL_TCP) {
 			append_sendbuffer(ss, s, request);	// add to high priority list, even priority == PRIORITY_LOW
 		} else {
@@ -1076,6 +1161,7 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 			append_sendbuffer_udp(ss,s,priority,request,udp_address);
 		}
 	}
+    // 返回一些操作的信息放到result消息里面
 	if (s->wb_size >= WARNING_SIZE && s->wb_size >= s->warn_size) {
 		s->warn_size = s->warn_size == 0 ? WARNING_SIZE *2 : s->warn_size*2;
 		result->opaque = s->opaque;
@@ -1087,14 +1173,20 @@ send_socket(struct socket_server *ss, struct request_send * request, struct sock
 	return -1;
 }
 
+/*
+ * socket线程处理管道投递过来的listen请求包
+ * */
 static int
 listen_socket(struct socket_server *ss, struct request_listen * request, struct socket_message *result) {
-	int id = request->id;
-	int listen_fd = request->fd;
+	int id = request->id;       //
+	int listen_fd = request->fd;    // tcp监听的socket套接字
+
+    // 将TCP监听套接字加入IO事件监听队列 注意这里reading参数设置的是false 把read事件禁止了
 	struct socket *s = new_fd(ss, id, listen_fd, PROTOCOL_TCP, request->opaque, false);
 	if (s == NULL) {
 		goto _failed;
 	}
+    // 把socket的类型设置为SOCKET_TYPE_PLISTEN 这个字段感觉是一个状态的传递
 	ATOM_STORE(&s->type , SOCKET_TYPE_PLISTEN);
 	result->opaque = request->opaque;
 	result->id = id;
@@ -1129,12 +1221,15 @@ _failed:
 	return SOCKET_ERR;
 }
 
+// 检查是否无数据可写
 static inline int
 nomore_sending_data(struct socket *s) {
 	return (send_buffer_empty(s) && s->dw_buffer == NULL && (ATOM_LOAD(&s->sending) & 0xffff) == 0)
 		|| (ATOM_LOAD(&s->type) == SOCKET_TYPE_HALFCLOSE_WRITE);
 }
 
+
+// 关闭socket的可读事件监听
 static void
 close_read(struct socket_server *ss, struct socket * s, struct socket_message *result) {
 	// Don't read socket later
@@ -1165,6 +1260,7 @@ close_socket(struct socket_server *ss, struct request_close *request, struct soc
 		// The socket is closed, ignore
 		return -1;
 	}
+
 	struct socket_lock l;
 	socket_lock_init(s, &l);
 
@@ -1203,6 +1299,9 @@ bind_socket(struct socket_server *ss, struct request_bind *request, struct socke
 	return SOCKET_OPEN;
 }
 
+/*
+ * socket线程处理管道投递过来的start请求包
+ * */
 static int
 resume_socket(struct socket_server *ss, struct request_resumepause *request, struct socket_message *result) {
 	int id = request->id;
@@ -1222,6 +1321,7 @@ resume_socket(struct socket_server *ss, struct request_resumepause *request, str
 	}
 	struct socket_lock l;
 	socket_lock_init(s, &l);
+    // 监听读事件
 	if (enable_read(ss, s, true)) {
 		result->data = "enable read failed";
 		return SOCKET_ERR;
@@ -1242,6 +1342,9 @@ resume_socket(struct socket_server *ss, struct request_resumepause *request, str
 	return -1;
 }
 
+/*
+ * socket线程处理管道投递过来的pause请求包 关闭socket的可读事件
+ * */
 static int
 pause_socket(struct socket_server *ss, struct request_resumepause *request, struct socket_message *result) {
 	int id = request->id;
@@ -1255,6 +1358,9 @@ pause_socket(struct socket_server *ss, struct request_resumepause *request, stru
 	return -1;
 }
 
+/*
+ * 设置socket的参数
+ * */
 static void
 setopt_socket(struct socket_server *ss, struct request_setopt *request) {
 	int id = request->id;
@@ -1266,6 +1372,9 @@ setopt_socket(struct socket_server *ss, struct request_setopt *request) {
 	setsockopt(s->fd, IPPROTO_TCP, request->what, &v, sizeof(v));
 }
 
+/*
+ * 从管道的数据接收端读取数据
+ * */
 static void
 block_readpipe(int pipefd, void *buffer, int sz) {
 	for (;;) {
@@ -1288,7 +1397,7 @@ has_cmd(struct socket_server *ss) {
 	int retval;
 
 	FD_SET(ss->recvctrl_fd, &ss->rfds);
-
+    // 使用select IO模型轮询一次IO文件描述符列表
 	retval = select(ss->recvctrl_fd+1, &ss->rfds, NULL, NULL, &tv);
 	if (retval == 1) {
 		return 1;
@@ -1375,6 +1484,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	// the length of message is one byte, so 256 buffer size is enough.
 	uint8_t buffer[256];
 	uint8_t header[2];
+    // 从管道上阻塞式的读取数据 [*_*] 如何利用管道读写数据 这里可以借鉴 [*_*]
 	block_readpipe(fd, header, sizeof(header));
 	int type = header[0];
 	int len = header[1];
@@ -1382,27 +1492,37 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	// ctrl command only exist in local fd, so don't worry about endian.
 	switch (type) {
 	case 'R':
+        // 启动监听读事件
 		return resume_socket(ss,(struct request_resumepause *)buffer, result);
 	case 'S':
+        // 关闭监听读事件
 		return pause_socket(ss,(struct request_resumepause *)buffer, result);
 	case 'B':
+        //
 		return bind_socket(ss,(struct request_bind *)buffer, result);
 	case 'L':
+        // 监听socket
 		return listen_socket(ss,(struct request_listen *)buffer, result);
 	case 'K':
+        // 关闭socket
 		return close_socket(ss,(struct request_close *)buffer, result);
 	case 'O':
+        // socket连接
 		return open_socket(ss, (struct request_open *)buffer, result);
 	case 'X':
+        // socket_server退出
 		result->opaque = 0;
 		result->id = 0;
 		result->ud = 0;
 		result->data = NULL;
 		return SOCKET_EXIT;
 	case 'W':
+        // 开启socket可写事件监听
 		return trigger_write(ss, (struct request_send *)buffer, result);
 	case 'D':
+            // 发送高优先级缓冲队列的数据
 	case 'P': {
+        // 发送低优先级缓冲队列的数据
 		int priority = (type == 'D') ? PRIORITY_HIGH : PRIORITY_LOW;
 		struct request_send * request = (struct request_send *) buffer;
 		int ret = send_socket(ss, request, result, priority, NULL);
@@ -1434,6 +1554,7 @@ static int
 forward_message_tcp(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message * result) {
 	int sz = s->p.size;
 	char * buffer = MALLOC(sz);
+    // 相应可读事件 从socket中的缓冲区读数据
 	int n = (int)read(s->fd, buffer, sz);
 	if (n<0) {
 		FREE(buffer);
@@ -1551,6 +1672,9 @@ forward_message_udp(struct socket_server *ss, struct socket *s, struct socket_lo
 	return SOCKET_UDP;
 }
 
+/*
+ * 发起socket连接 返回消息包，里面是连接的一些状态和信息
+ * */
 static int
 report_connect(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message *result) {
 	int error;
@@ -1601,11 +1725,16 @@ getname(union sockaddr_all *u, char *buffer, size_t sz) {
 	}
 }
 
+/*
+ * 处理socket的accept
+ * */
 // return 0 when failed, or -1 when file limit
 static int
 report_accept(struct socket_server *ss, struct socket *s, struct socket_message *result) {
 	union sockaddr_all u;
 	socklen_t len = sizeof(u);
+    // 在TCP协议中，accept()是服务端用于接受客户端连接的函数。接收连接的过程中，三次握手已经在建立连接时完成了。
+    // 因此，当accept()函数返回时，已经完成了三次握手。
 	int client_fd = accept(s->fd, &u.s, &len);
 	if (client_fd < 0) {
 		if (errno == EMFILE || errno == ENFILE) {
@@ -1628,13 +1757,17 @@ report_accept(struct socket_server *ss, struct socket *s, struct socket_message 
 			return 0;
 		}
 	}
+    // 预分配一个新的socket id
 	int id = reserve_id(ss);
 	if (id < 0) {
 		close(client_fd);
 		return 0;
 	}
+    // 设置socket 心跳保活
 	socket_keepalive(client_fd);
+    // 设置socket 非阻塞模式
 	sp_nonblocking(client_fd);
+    // 初始化一个新的socket对象
 	struct socket *ns = new_fd(ss, id, client_fd, PROTOCOL_TCP, s->opaque, false);
 	if (ns == NULL) {
 		close(client_fd);
@@ -1678,8 +1811,10 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
 	for (;;) {
+        // 处理管道的事件
 		if (ss->checkctrl) {
-			if (has_cmd(ss)) {
+            // 通过select 轮询管道fd事件
+			if (has_cmd(ss)) { // 如果管道fd有可读事件 从管道读取数据
 				int type = ctrl_cmd(ss, result);
 				if (type != -1) {
 					clear_closed_event(ss, result, type);
@@ -1763,6 +1898,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				return type;
 			}
 			if (e->write) {
+                // IO可写事件触发 将缓冲BUFF的数据发送出去
 				int type = send_buffer(ss, s, &l, result);
 				if (type == -1)
 					break;
@@ -1796,6 +1932,9 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 	}
 }
 
+/*
+ * 投递请求包给管道
+ * */
 static void
 send_request(struct socket_server *ss, struct request_package *request, char type, int len) {
 	request->header[6] = (uint8_t)type;
@@ -1833,6 +1972,9 @@ open_request(struct socket_server *ss, struct request_package *req, uintptr_t op
 	return len;
 }
 
+/*
+ * 发起socket连接
+ * */
 int 
 socket_server_connect(struct socket_server *ss, uintptr_t opaque, const char * addr, int port) {
 	struct request_package request;
@@ -1967,6 +2109,7 @@ socket_server_shutdown(struct socket_server *ss, uintptr_t opaque, int id) {
 	send_request(ss, &request, 'K', sizeof(request.u.close));
 }
 
+// 处理socket的bind行为
 // return -1 means failed
 // or return AF_INET or AF_INET6
 static int
@@ -2016,9 +2159,11 @@ _failed_fd:
 	return -1;
 }
 
+// 处理tcp的绑定和监听
 static int
 do_listen(const char * host, int port, int backlog) {
 	int family = 0;
+
 	int listen_fd = do_bind(host, port, IPPROTO_TCP, &family);
 	if (listen_fd < 0) {
 		return -1;
@@ -2032,6 +2177,7 @@ do_listen(const char * host, int port, int backlog) {
 
 int 
 socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * addr, int port, int backlog) {
+    // 绑定和监听tcp端口 返回监听的socket
 	int fd = do_listen(addr, port, backlog);
 	if (fd < 0) {
 		return -1;
@@ -2042,6 +2188,7 @@ socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * ad
 		close(fd);
 		return id;
 	}
+    // 把一个请求包通过管道投递给socket线程 type是 'L'
 	request.u.listen.opaque = opaque;
 	request.u.listen.id = id;
 	request.u.listen.fd = fd;
@@ -2049,6 +2196,7 @@ socket_server_listen(struct socket_server *ss, uintptr_t opaque, const char * ad
 	return id;
 }
 
+// 通过管道给socket线程投递bind请求包
 int
 socket_server_bind(struct socket_server *ss, uintptr_t opaque, int fd) {
 	struct request_package request;
@@ -2062,6 +2210,7 @@ socket_server_bind(struct socket_server *ss, uintptr_t opaque, int fd) {
 	return id;
 }
 
+// 通过管道给socket线程投递start请求包
 void
 socket_server_start(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
@@ -2070,6 +2219,7 @@ socket_server_start(struct socket_server *ss, uintptr_t opaque, int id) {
 	send_request(ss, &request, 'R', sizeof(request.u.resumepause));
 }
 
+// 通过管道给socket线程投递pause请求包
 void
 socket_server_pause(struct socket_server *ss, uintptr_t opaque, int id) {
 	struct request_package request;
@@ -2078,6 +2228,7 @@ socket_server_pause(struct socket_server *ss, uintptr_t opaque, int id) {
 	send_request(ss, &request, 'S', sizeof(request.u.resumepause));
 }
 
+// 通过管道给socket线程投递nodelay请求包
 void
 socket_server_nodelay(struct socket_server *ss, int id) {
 	struct request_package request;
@@ -2325,6 +2476,9 @@ query_info(struct socket *s, struct socket_info *si) {
 	return 1;
 }
 
+/*
+ * 获取socket_server相关信息
+ * */
 struct socket_info *
 socket_server_info(struct socket_server *ss) {
 	int i;

@@ -61,10 +61,12 @@ forward_message(int type, bool padding, struct socket_message * result) {
 		sm->buffer = result->data;
 	}
 
+    // 这里是给服务回复一个 PTYPE_SOCKET 类型的服务消息
 	struct skynet_message message;
 	message.source = 0;
 	message.session = 0;
 	message.data = sm;
+    // 这个消息的类型是 PTYPE_SOCKET
 	message.sz = sz | ((size_t)PTYPE_SOCKET << MESSAGE_TYPE_SHIFT);
 	
 	if (skynet_context_push((uint32_t)result->opaque, &message)) {

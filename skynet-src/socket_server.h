@@ -42,15 +42,25 @@ void socket_server_updatetime(struct socket_server *, uint64_t time);
 // 进行事件轮询
 int socket_server_poll(struct socket_server *, struct socket_message *result, int *more);
 
+// ss 退出 工作线程发起请求包给socket线程处理
 void socket_server_exit(struct socket_server *);
 
-
+// 关闭socket 工作线程发起请求包给socket线程处理
 void socket_server_close(struct socket_server *, uintptr_t opaque, int id);
 void socket_server_shutdown(struct socket_server *, uintptr_t opaque, int id);
+
+// socket启动监听读事件  工作线程发起请求包给socket线程处理
 void socket_server_start(struct socket_server *, uintptr_t opaque, int id);
+
+// socket启动监听读事件  工作线程发起请求包给socket线程处理
 void socket_server_pause(struct socket_server *, uintptr_t opaque, int id);
 
 // return -1 when error
+/*
+ * 发送数据
+ * 一种情况是直接将数据写进socket
+ * 一种情况是投递给socket线程 由可写事件触发写进socket
+ * */
 int socket_server_send(struct socket_server *, struct socket_sendbuffer *buffer);
 int socket_server_send_lowpriority(struct socket_server *, struct socket_sendbuffer *buffer);
 
