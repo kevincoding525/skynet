@@ -1,20 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="CidrRootsConfiguration">
-    <sourceRoots>
-      <file path="$PROJECT_DIR$/3rd/jemalloc/include/jemalloc" />
-      <file path="$PROJECT_DIR$/3rd/lua" />
-      <file path="$PROJECT_DIR$/lualib-src" />
-      <file path="$PROJECT_DIR$/service-src" />
-      <file path="$PROJECT_DIR$/skynet-src" />
-    </sourceRoots>
-  </component>
   <component name="ExternalStorageConfigurationManager" enabled="true" />
   <component name="MakefileSettings">
     <option name="linkedExternalProjectsSettings">
       <MakefileProjectSettings>
         <option name="buildOptions" value="macosx" />
-        <option name="buildTarget" value="" />
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>

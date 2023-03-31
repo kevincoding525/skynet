@@ -64,7 +64,7 @@ struct skynet_node {
 	ATOM_INT total; // 节点服务实例数量
 	int init;
 	uint32_t monitor_exit; // 可以设置监控退出的服务实例 有服务实例退出 会给monitor_exit服务实例发消息
-	pthread_key_t handle_key;
+	pthread_key_t handle_key; // 线程局部变量的key
 	bool profile;	// default is on
 };
 

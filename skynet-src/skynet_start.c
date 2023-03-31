@@ -18,13 +18,16 @@
 #include <string.h>
 #include <signal.h>
 
+/*
+ * monitor 主要负责监控工作线程，及时发现工作线程是否进入死循环
+ * */
 struct monitor {
-	int count;
-	struct skynet_monitor ** m;
-	pthread_cond_t cond;
-	pthread_mutex_t mutex;
-	int sleep;
-	int quit;
+	int count;   // 工作线程的数量
+	struct skynet_monitor ** m;  // 每个工作线程对应一个skynet_monitor对象 对其进行监控
+	pthread_cond_t cond;    // 条件变量
+	pthread_mutex_t mutex;  // 辅助条件变量的互斥量
+	int sleep;  // 在睡眠状态的工作线程数量
+	int quit;  // 线程退出标志
 };
 
 // 工作线程启动的参数信息
@@ -55,7 +58,7 @@ create_thread(pthread_t *thread, void *(*start_routine) (void *), void *arg) {
 
 static void
 wakeup(struct monitor *m, int busy) {
-	if (m->sleep >= m->count - busy) {
+	if (m->sleep >= m->count - busy) { // 如果有线程睡眠了 唤醒一个
 		// signal sleep worker, "spurious wakeup" is harmless
 		pthread_cond_signal(&m->cond);
 	}
@@ -109,7 +112,7 @@ thread_monitor(void *p) {
 		for (i=0;i<n;i++) {
 			skynet_monitor_check(m->m[i]);
 		}
-        // 为啥要循环睡眠5次 不是一次睡眠5S ？？？
+        // 每隔一秒检测一次线程退出条件
 		for (i=0;i<5;i++) {
 			CHECK_ABORT
 			sleep(1);
@@ -172,15 +175,15 @@ thread_worker(void *p) {
 	struct message_queue * q = NULL;
 	while (!m->quit) {
 		q = skynet_context_message_dispatch(sm, q, weight);
-		if (q == NULL) {
-			if (pthread_mutex_lock(&m->mutex) == 0) {
+		if (q == NULL) {  // 全局队列是空的
+			if (pthread_mutex_lock(&m->mutex) == 0) { // 获取 监控锁
 				++ m->sleep;
 				// "spurious wakeup" is harmless,
 				// because skynet_context_message_dispatch() can be call at any time.
 				if (!m->quit)
-					pthread_cond_wait(&m->cond, &m->mutex);
+					pthread_cond_wait(&m->cond, &m->mutex); // 进入睡眠 等待条件变量唤醒
 				-- m->sleep;
-				if (pthread_mutex_unlock(&m->mutex)) {
+				if (pthread_mutex_unlock(&m->mutex)) {  // 释放 监控锁
 					fprintf(stderr, "unlock mutex error");
 					exit(1);
 				}
